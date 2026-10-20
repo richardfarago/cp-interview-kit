@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { prisma } from '../index';
-import { AuthRequest, apiKeyMiddleware } from '../middleware/auth';
+import { AuthRequest } from '../middleware/auth';
 import { getAnalyticsByFilter, searchEvents, bulkInsertEvents } from '../utils/db';
 import { cache, cacheKeys } from '../utils/cache';
 import { v4 as uuidv4 } from 'uuid';
@@ -375,7 +375,7 @@ router.post('/funnel', async (req: AuthRequest, res: Response) => {
 });
 
 // API endpoint for external tracking (uses API key instead of JWT)
-router.post('/v1/track', apiKeyMiddleware, async (req: AuthRequest, res: Response) => {
+export const sdkTrackHandler = async (req: AuthRequest, res: Response) => {
   try {
     const { eventType, eventName, properties, userId, sessionId } = req.body;
 
@@ -402,6 +402,6 @@ router.post('/v1/track', apiKeyMiddleware, async (req: AuthRequest, res: Respons
     console.error('API track error:', error);
     res.status(500).json({ error: 'Failed to track event' });
   }
-});
+};
 
 export default router;

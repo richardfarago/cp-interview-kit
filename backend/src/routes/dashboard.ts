@@ -521,8 +521,8 @@ router.post('/:dashboardId/share', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Get shared dashboard (public endpoint would need to be added)
-router.get('/shared/:dashboardId', async (req: AuthRequest, res: Response) => {
+// Get shared dashboard; mounted in index.ts without user auth, so it only serves public dashboards
+export const sharedDashboardHandler = async (req: AuthRequest, res: Response) => {
   try {
     const { dashboardId } = req.params;
 
@@ -545,6 +545,6 @@ router.get('/shared/:dashboardId', async (req: AuthRequest, res: Response) => {
     console.error('Get shared dashboard error:', error);
     res.status(500).json({ error: 'Failed to get dashboard' });
   }
-});
+};
 
 export default router;

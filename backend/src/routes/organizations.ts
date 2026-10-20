@@ -135,7 +135,7 @@ router.post('/invite', requireOwnerOrAdmin, async (req: AuthRequest, res: Respon
       return res.status(400).json({ error: 'User with this email already exists' });
     }
     const defaultPassword = 'ChangeMe123!';
-    const passwordHash = hashPassword(defaultPassword);
+    const passwordHash = await hashPassword(defaultPassword);
 
     const user = await prisma.user.create({
       data: {

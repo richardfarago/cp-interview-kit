@@ -96,10 +96,10 @@ router.put('/me/password', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (!verifyPassword(currentPassword, user.passwordHash)) {
+    if (!(await verifyPassword(currentPassword, user.passwordHash))) {
       return res.status(400).json({ error: 'Current password is incorrect' });
     }
-    const newPasswordHash = hashPassword(newPassword);
+    const newPasswordHash = await hashPassword(newPassword);
 
     await prisma.user.update({
       where: { id: req.user!.id },
@@ -308,7 +308,7 @@ router.delete('/me', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (!verifyPassword(password, user.passwordHash)) {
+    if (!(await verifyPassword(password, user.passwordHash))) {
       return res.status(400).json({ error: 'Incorrect password' });
     }
 

@@ -4,7 +4,10 @@ module.exports = {
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
-  collectCoverage: true,
+  setupFiles: ['<rootDir>/tests/setup/env.ts'],
+  globalSetup: '<rootDir>/tests/setup/globalSetup.ts',
+  // Off until it measures all of src/ against a real baseline; until now it measured nothing
+  collectCoverage: false,
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov'],
   coverageThreshold: {

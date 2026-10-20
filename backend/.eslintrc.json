@@ -1,0 +1,9 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "rules": {
+    "no-restricted-properties": ["error",
+      { "object": "jwt", "property": "decode", "message": "jwt.decode skips the signature check; use verifyToken." }
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push: { branches: [ "master" ] }
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env: { POSTGRES_USER: insighthub, POSTGRES_PASSWORD: insighthub_password }
+        ports: [ "5432:5432" ]
+        options: --health-cmd "pg_isready -U insighthub" --health-interval 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://insighthub:insighthub_password@localhost:5432/insighthub_test
+      JWT_SECRET: ci-only-secret
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      # No lockfile is committed yet, so this can't be `npm ci`
+      - run: npm install
+        working-directory: .
+      - run: npx prisma generate
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npx jest --ci
