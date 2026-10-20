@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { prisma } from '../index';
+import { systemPrisma as prisma } from '../index';
 import { generateToken, verifyToken, TokenPayload } from '../middleware/auth';
 import { hashPassword, verifyPassword, isLegacyHash, generateToken as generateRandomToken } from '../utils/encryption';
 import { validate, loginSchema, registerSchema } from '../middleware/validate';

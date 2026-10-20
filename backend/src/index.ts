@@ -18,12 +18,16 @@ import { authMiddleware, apiKeyMiddleware } from './middleware/auth';
 import { rateLimiter } from './middleware/rateLimit';
 import { startNotificationJob } from './jobs/notifications';
 import { startReportJob } from './jobs/reports';
+import { tenantScoped } from './utils/tenantScope';
 
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-export const prisma = new PrismaClient();
+// Unscoped: only for code that legitimately crosses tenants (login, API-key lookup, jobs)
+export const systemPrisma = new PrismaClient();
+// Everything else uses this one, so a query can only reach the caller's organization
+export const prisma = tenantScoped(systemPrisma);
 app.use(cors({
   origin: '*',
   credentials: true

@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { prisma } from '../index';
-import { AuthRequest } from '../middleware/auth';
-import { getAnalyticsByFilter, searchEvents, bulkInsertEvents } from '../utils/db';
+import { AuthRequest, requireOwnerOrAdmin } from '../middleware/auth';
+import { safeGetAnalytics, searchEvents, bulkInsertEvents } from '../utils/db';
 import { cache, cacheKeys } from '../utils/cache';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -84,11 +84,17 @@ router.get('/data', async (req: AuthRequest, res: Response) => {
   try {
     const { eventType, startDate, endDate, groupBy } = req.query;
     if (eventType && startDate && endDate) {
-      const data = await getAnalyticsByFilter(
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ error: 'Invalid startDate or endDate' });
+      }
+
+      const data = await safeGetAnalytics(
         req.user!.organizationId,
-        eventType as string,
-        startDate as string,
-        endDate as string
+        String(eventType),
+        start,
+        end
       );
 
       return res.json(data);
@@ -220,7 +226,7 @@ router.get('/event-types', async (req: AuthRequest, res: Response) => {
 });
 
 // Delete events (admin only)
-router.delete('/events', async (req: AuthRequest, res: Response) => {
+router.delete('/events', requireOwnerOrAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { eventType, before, confirmation } = req.body;
 

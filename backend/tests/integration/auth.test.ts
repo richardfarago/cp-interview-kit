@@ -1,7 +1,7 @@
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createHash } from 'crypto';
-import app, { prisma } from '../../src/index';
+import app, { systemPrisma as prisma } from '../../src/index';
 import { createTenant } from '../setup/helpers';
 
 const secret = process.env.JWT_SECRET!;

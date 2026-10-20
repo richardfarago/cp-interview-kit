@@ -1,12 +1,17 @@
 import { Router, Response } from 'express';
-import { prisma } from '../index';
-import { AuthRequest, requireOwnerOrAdmin } from '../middleware/auth';
+import { prisma, systemPrisma } from '../index';
+import { isNotFound } from '../utils/tenantScope';
+import { AuthRequest, requireRole } from '../middleware/auth';
 import { validate, createDashboardSchema, createWidgetSchema } from '../middleware/validate';
 import { cache, cacheKeys } from '../utils/cache';
 import { broadcastToOrg } from '../index';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
+
+// Viewers are read-only; every non-GET route here changes a dashboard, so new ones are covered too
+const canEdit = requireRole(['owner', 'admin', 'member']);
+router.use((req, res, next) => (req.method === 'GET' ? next() : canEdit(req, res, next)));
 
 // Get all dashboards for organization
 router.get('/', async (req: AuthRequest, res: Response) => {
@@ -268,6 +273,7 @@ router.put('/:dashboardId/widgets/:widgetId', async (req: AuthRequest, res: Resp
 
     res.json(widget);
   } catch (error) {
+    if (isNotFound(error)) return res.status(404).json({ error: 'Widget not found' });
     console.error('Update widget error:', error);
     res.status(500).json({ error: 'Failed to update widget' });
   }
@@ -297,6 +303,7 @@ router.delete('/:dashboardId/widgets/:widgetId', async (req: AuthRequest, res: R
 
     res.json({ message: 'Widget deleted' });
   } catch (error) {
+    if (isNotFound(error)) return res.status(404).json({ error: 'Widget not found' });
     console.error('Delete widget error:', error);
     res.status(500).json({ error: 'Failed to delete widget' });
   }
@@ -526,7 +533,8 @@ export const sharedDashboardHandler = async (req: AuthRequest, res: Response) =>
   try {
     const { dashboardId } = req.params;
 
-    const dashboard = await prisma.dashboard.findFirst({
+    // Anonymous visitors have no tenant; the isPublic filter is what limits this query
+    const dashboard = await systemPrisma.dashboard.findFirst({
       where: {
         id: dashboardId,
         isPublic: true

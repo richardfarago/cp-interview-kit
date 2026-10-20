@@ -1,16 +1,19 @@
 import { randomUUID } from 'crypto';
-import { prisma } from '../../src/index';
+import { systemPrisma as prisma } from '../../src/index';
 import { generateToken } from '../../src/middleware/auth';
 
 // Each test creates its own tenants, so test files can share one database
 export async function createTenant(label: string, role = 'owner') {
-  const id = randomUUID();
   const organization = await prisma.organization.create({
-    data: { name: `${label} org`, slug: `${label}-${id}` }
+    data: { name: `${label} org`, slug: `${label}-${randomUUID()}` }
   });
+  return { organization, ...(await addUser(organization.id, label, role)) };
+}
+
+// Another user in an existing organization, with a token signed like a real login
+export async function addUser(organizationId: string, label: string, role: string) {
   const user = await prisma.user.create({
-    data: { email: `${label}-${id}@example.test`, passwordHash: 'not-used', name: label, role, organizationId: organization.id }
+    data: { email: `${label}-${randomUUID()}@example.test`, passwordHash: 'not-used', name: label, role, organizationId }
   });
-  const token = generateToken(user.id, user.email, organization.id, user.role);
-  return { organization, user, token };
+  return { user, token: generateToken(user.id, user.email, organizationId, user.role) };
 }

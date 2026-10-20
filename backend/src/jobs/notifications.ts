@@ -1,4 +1,4 @@
-import { prisma } from '../index';
+import { systemPrisma as prisma } from '../index';
 import nodemailer from 'nodemailer';
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'localhost',

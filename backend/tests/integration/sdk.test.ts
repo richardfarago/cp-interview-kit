@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { randomUUID } from 'crypto';
-import app, { prisma } from '../../src/index';
+import app, { systemPrisma as prisma } from '../../src/index';
 import { createTenant } from '../setup/helpers';
 
 afterAll(() => prisma.$disconnect());

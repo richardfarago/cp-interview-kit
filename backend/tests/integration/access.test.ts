@@ -1,5 +1,5 @@
 import request from 'supertest';
-import app, { prisma } from '../../src/index';
+import app, { systemPrisma as prisma } from '../../src/index';
 import { createTenant } from '../setup/helpers';
 
 afterAll(() => prisma.$disconnect());

@@ -1,4 +1,4 @@
-import { prisma } from '../index';
+import { systemPrisma as prisma } from '../index';
 import fs from 'fs';
 import path from 'path';
 

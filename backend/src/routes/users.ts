@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { prisma } from '../index';
+import { isNotFound } from '../utils/tenantScope';
 import { AuthRequest } from '../middleware/auth';
 import { hashPassword, verifyPassword } from '../utils/encryption';
 import { cache, cacheKeys } from '../utils/cache';
@@ -220,13 +221,14 @@ router.get('/me/sessions', async (req: AuthRequest, res: Response) => {
 router.delete('/me/sessions/:sessionId', async (req: AuthRequest, res: Response) => {
   try {
     const { sessionId } = req.params;
-    // Could revoke other users' sessions!
+    // Sessions have no organization, so they are scoped to their user instead
     await prisma.session.delete({
-      where: { id: sessionId }
+      where: { id: sessionId, userId: req.user!.id }
     });
 
     res.json({ message: 'Session revoked' });
   } catch (error) {
+    if (isNotFound(error)) return res.status(404).json({ error: 'Session not found' });
     console.error('Revoke session error:', error);
     res.status(500).json({ error: 'Failed to revoke session' });
   }

@@ -1,6 +1,8 @@
 import { Router, Response } from 'express';
-import { prisma } from '../index';
+import { prisma, systemPrisma } from '../index';
+import { isNotFound } from '../utils/tenantScope';
 import { AuthRequest, requireOwnerOrAdmin, requireOwner } from '../middleware/auth';
+import { validate, updateUserSchema } from '../middleware/validate';
 import { hashPassword, generateApiKey } from '../utils/encryption';
 import { cache, cacheKeys } from '../utils/cache';
 import { v4 as uuidv4 } from 'uuid';
@@ -127,7 +129,8 @@ router.post('/invite', requireOwnerOrAdmin, async (req: AuthRequest, res: Respon
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
+    // Emails are unique across all tenants, so this check has to look at all of them
+    const existingUser = await systemPrisma.user.findUnique({
       where: { email: email.toLowerCase() }
     });
 
@@ -188,7 +191,7 @@ router.post('/invite', requireOwnerOrAdmin, async (req: AuthRequest, res: Respon
 });
 
 // Update member role
-router.put('/members/:memberId', requireOwnerOrAdmin, async (req: AuthRequest, res: Response) => {
+router.put('/members/:memberId', requireOwnerOrAdmin, validate(updateUserSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { memberId } = req.params;
     const { role, isActive } = req.body;
@@ -213,6 +216,11 @@ router.put('/members/:memberId', requireOwnerOrAdmin, async (req: AuthRequest, r
       if (ownerCount <= 1) {
         return res.status(400).json({ error: 'Cannot demote the last owner' });
       }
+    }
+
+    // Only an owner can make someone an owner, the caller included
+    if (role === 'owner' && req.user!.role !== 'owner') {
+      return res.status(403).json({ error: 'Only owners can grant the owner role' });
     }
 
     // Prevent admin from changing owner's role
@@ -413,6 +421,7 @@ router.delete('/api-keys/:keyId', requireOwnerOrAdmin, async (req: AuthRequest, 
 
     res.json({ message: 'API key revoked' });
   } catch (error) {
+    if (isNotFound(error)) return res.status(404).json({ error: 'API key not found' });
     console.error('Revoke API key error:', error);
     res.status(500).json({ error: 'Failed to revoke API key' });
   }

@@ -3,7 +3,9 @@
   "parser": "@typescript-eslint/parser",
   "rules": {
     "no-restricted-properties": ["error",
-      { "object": "jwt", "property": "decode", "message": "jwt.decode skips the signature check; use verifyToken." }
+      { "object": "jwt", "property": "decode", "message": "jwt.decode skips the signature check; use verifyToken." },
+      { "property": "$queryRawUnsafe", "message": "Use the $queryRaw tagged template so values are bound parameters." },
+      { "property": "$executeRawUnsafe", "message": "Use the $executeRaw tagged template so values are bound parameters." }
     ]
   }
 }
