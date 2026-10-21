@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { prisma } from '../index';
+import { isNotFound } from '../utils/tenantScope';
 import { AuthRequest } from '../middleware/auth';
 import { broadcastToOrg } from '../index';
 import { v4 as uuidv4 } from 'uuid';
@@ -47,14 +48,14 @@ router.get('/unread-count', async (req: AuthRequest, res: Response) => {
 router.put('/:notificationId/read', async (req: AuthRequest, res: Response) => {
   try {
     const { notificationId } = req.params;
-    // Can mark other users' notifications as read!
     const notification = await prisma.notification.update({
-      where: { id: notificationId },
+      where: { id: notificationId, userId: req.user!.id },
       data: { isRead: true }
     });
 
     res.json(notification);
   } catch (error) {
+    if (isNotFound(error)) return res.status(404).json({ error: 'Notification not found' });
     console.error('Mark read error:', error);
     res.status(500).json({ error: 'Failed to mark notification as read' });
   }
@@ -83,11 +84,12 @@ router.delete('/:notificationId', async (req: AuthRequest, res: Response) => {
   try {
     const { notificationId } = req.params;
     await prisma.notification.delete({
-      where: { id: notificationId }
+      where: { id: notificationId, userId: req.user!.id }
     });
 
     res.json({ message: 'Notification deleted' });
   } catch (error) {
+    if (isNotFound(error)) return res.status(404).json({ error: 'Notification not found' });
     console.error('Delete notification error:', error);
     res.status(500).json({ error: 'Failed to delete notification' });
   }

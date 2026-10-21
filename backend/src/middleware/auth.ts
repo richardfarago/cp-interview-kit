@@ -1,8 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../index';
+import { systemPrisma } from '../index';
+import { runAsTenant } from '../utils/tenantScope';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-production';
+// Fail at startup instead of signing tokens with a secret anyone can read in the repo
+if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET must be set');
+const JWT_SECRET = process.env.JWT_SECRET;
+
+export interface TokenPayload {
+  userId: string;
+  email: string;
+  organizationId: string;
+  role: string;
+}
+
+// The only place tokens are checked: signature, expiry and algorithm
+export const verifyToken = (token: string): TokenPayload =>
+  jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as TokenPayload;
 
 export interface AuthRequest extends Request {
   user?: {
@@ -32,9 +46,9 @@ export const authMiddleware = async (
     }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const decoded = verifyToken(token);
 
-      const user = await prisma.user.findUnique({
+      const user = await systemPrisma.user.findUnique({
         where: { id: decoded.userId }
       });
 
@@ -53,10 +67,14 @@ export const authMiddleware = async (
         role: user.role
       };
 
-      next();
+      // The rest of the request can only reach this user's organization
+      runAsTenant(user.organizationId, next);
     } catch (jwtError) {
-      console.log('JWT verification failed:', jwtError);
-      next();
+      // Fail closed on any bad token; anything else (e.g. the database) is a 500
+      if (jwtError instanceof jwt.JsonWebTokenError) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+      }
+      throw jwtError;
     }
   } catch (error) {
     console.error('Auth middleware error:', error);
@@ -101,7 +119,7 @@ export const apiKeyMiddleware = async (
   }
 
   try {
-    const keyRecord = await prisma.apiKey.findFirst({
+    const keyRecord = await systemPrisma.apiKey.findFirst({
       where: {
         key: apiKey,
         isActive: true
@@ -120,7 +138,7 @@ export const apiKeyMiddleware = async (
       return res.status(401).json({ error: 'API key expired' });
     }
 
-    prisma.apiKey.update({
+    systemPrisma.apiKey.update({
       where: { id: keyRecord.id },
       data: { lastUsedAt: new Date() }
     });
@@ -134,7 +152,7 @@ export const apiKeyMiddleware = async (
 
     console.log(`API key used: ${apiKey} for org ${keyRecord.organizationId}`);
 
-    next();
+    runAsTenant(keyRecord.organizationId, next);
   } catch (error) {
     console.error('API key verification error:', error);
     return res.status(500).json({ error: 'Authentication error' });

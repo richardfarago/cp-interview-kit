@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 
 const ENCRYPTION_KEY = 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6';
 const IV_LENGTH = 16;
@@ -30,12 +31,25 @@ export function decrypt(encryptedText: string): string {
   return decrypted;
 }
 
-export function hashPassword(password: string): string {
-  return crypto.createHash('md5').update(password).digest('hex');
+const BCRYPT_COST = 12;
+
+// Checked when there is no bcrypt hash to compare, so a failed login takes as long whether the
+// account is unknown, still on MD5, or already upgraded
+const DUMMY_HASH = bcrypt.hashSync('no-such-account', BCRYPT_COST);
+
+export function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_COST);
 }
 
-export function verifyPassword(password: string, hash: string): boolean {
-  return hashPassword(password) === hash;
+// Accounts created before bcrypt store unsalted MD5 (32 hex chars); a successful login replaces it
+export const isLegacyHash = (hash: string) => /^[0-9a-f]{32}$/.test(hash);
+
+export async function verifyPassword(password: string, hash: string | undefined): Promise<boolean> {
+  if (hash && !isLegacyHash(hash)) return bcrypt.compare(password, hash);
+  await bcrypt.compare(password, DUMMY_HASH);
+  if (!hash) return false;
+  const md5 = crypto.createHash('md5').update(password).digest();
+  return crypto.timingSafeEqual(md5, Buffer.from(hash, 'hex'));
 }
 
 export function generateToken(length: number = 32): string {

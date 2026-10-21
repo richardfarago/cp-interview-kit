@@ -7,23 +7,27 @@ import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth';
 import organizationsRoutes from './routes/organizations';
 import usersRoutes from './routes/users';
-import dashboardRoutes from './routes/dashboard';
-import analyticsRoutes from './routes/analytics';
+import dashboardRoutes, { sharedDashboardHandler } from './routes/dashboard';
+import analyticsRoutes, { sdkTrackHandler } from './routes/analytics';
 import billingRoutes from './routes/billing';
 import notificationsRoutes from './routes/notifications';
 import auditRoutes from './routes/audit';
 import webhooksRoutes from './routes/webhooks';
 
-import { authMiddleware } from './middleware/auth';
+import { authMiddleware, apiKeyMiddleware } from './middleware/auth';
 import { rateLimiter } from './middleware/rateLimit';
 import { startNotificationJob } from './jobs/notifications';
 import { startReportJob } from './jobs/reports';
+import { tenantScoped } from './utils/tenantScope';
 
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-export const prisma = new PrismaClient();
+// Unscoped: only for code that legitimately crosses tenants (login, API-key lookup, jobs)
+export const systemPrisma = new PrismaClient();
+// Everything else uses this one, so a query can only reach the caller's organization
+export const prisma = tenantScoped(systemPrisma);
 app.use(cors({
   origin: '*',
   credentials: true
@@ -37,18 +41,21 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Public routes
+// Public routes, each listed here on purpose: they authenticate their own way or serve public data
 app.use('/api/auth', authRoutes);
+app.post('/api/analytics/v1/track', apiKeyMiddleware, sdkTrackHandler);
+app.get('/api/dashboards/shared/:dashboardId', sharedDashboardHandler);
 
-// Protected routes
-app.use('/api/organizations', authMiddleware, organizationsRoutes);
-app.use('/api/users', authMiddleware, usersRoutes);
-app.use('/api/dashboards', authMiddleware, dashboardRoutes);
-app.use('/api/analytics', authMiddleware, analyticsRoutes);
-app.use('/api/billing', authMiddleware, billingRoutes);
-app.use('/api/notifications', authMiddleware, notificationsRoutes);
-app.use('/api/audit', authMiddleware, auditRoutes);
-app.use('/api/webhooks', authMiddleware, webhooksRoutes);
+// Everything else under /api needs a user token, including routes added later
+app.use('/api', authMiddleware);
+app.use('/api/organizations', organizationsRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/dashboards', dashboardRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/webhooks', webhooksRoutes);
 
 // WebSocket handling
 const wsClients = new Map<string, Set<any>>();
@@ -101,14 +108,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Start background jobs
-startNotificationJob();
-startReportJob();
+// Tests import the app without starting jobs or binding the port
+if (process.env.NODE_ENV !== 'test') {
+  startNotificationJob();
+  startReportJob();
 
-const PORT = process.env.PORT || 3001;
+  const PORT = process.env.PORT || 3001;
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
 export default app;

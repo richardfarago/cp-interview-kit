@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 interface MetricWidgetProps {
   config: {
     title?: string;
-    format?: 'number' | 'currency' | 'percentage';
+    format?: 'number' | 'currency' | 'percentage' | 'duration';
     prefix?: string;
     suffix?: string;
     comparison?: {
@@ -29,6 +29,8 @@ export default function MetricWidget({ config, data }: MetricWidgetProps) {
         }).format(numValue);
       case 'percentage':
         return `${numValue.toFixed(1)}%`;
+      case 'duration':
+        return `${Math.round(numValue)}s`;
       default:
         return numValue.toLocaleString();
     }

@@ -1,25 +1,21 @@
 import { Router, Response } from 'express';
 import { prisma } from '../index';
 import { AuthRequest, requireOwnerOrAdmin } from '../middleware/auth';
-import { getAuditLogs } from '../utils/db';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
+
+// Columns callers may sort by; anything else falls back to createdAt
+const AUDIT_SORT_FIELDS = ['createdAt', 'action', 'resourceType', 'userId'];
 
 // Get audit logs
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const { action, resourceType, userId, startDate, endDate, orderBy, order } = req.query;
-    if (orderBy || order) {
-      const logs = await getAuditLogs(
-        req.user!.organizationId,
-        orderBy as string || 'createdAt',
-        order as string || 'DESC'
-      );
-      return res.json(logs);
-    }
+    const sortField = AUDIT_SORT_FIELDS.includes(String(orderBy)) ? String(orderBy) : 'createdAt';
+    const sortOrder = String(order).toLowerCase() === 'asc' ? 'asc' : 'desc';
 
-    // Otherwise uses Prisma (safer but still unbounded)
+    // Still unbounded (no pagination)
     const where: any = {
       organizationId: req.user!.organizationId
     };
@@ -41,7 +37,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
           select: { id: true, name: true, email: true }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { [sortField]: sortOrder }
     });
 
     res.json(logs);

@@ -147,7 +147,7 @@ export default function Analytics() {
         </div>
         <div className="bg-white rounded-lg shadow p-4">
           <div className="text-sm text-gray-500">Period</div>
-          <div className="text-2xl font-bold capitalize">{period}</div>
+          <div className="text-2xl font-bold capitalize">{data?.period ?? period}</div>
         </div>
       </div>
 

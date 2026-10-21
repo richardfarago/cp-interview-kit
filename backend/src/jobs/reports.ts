@@ -1,4 +1,4 @@
-import { prisma } from '../index';
+import { systemPrisma as prisma } from '../index';
 import fs from 'fs';
 import path from 'path';
 
@@ -14,6 +14,8 @@ export function startReportJob() {
       generateDailyReports();
     }
   }, 60 * 1000);
+
+  setInterval(cleanupOldReports, 24 * 60 * 60 * 1000);
 }
 function generateDailyReports() {
   console.log('Generating daily reports...');
@@ -218,6 +220,3 @@ export function cleanupOldReports() {
     }
   });
 }
-
-// Schedule cleanup
-setInterval(cleanupOldReports, 24 * 60 * 60 * 1000);

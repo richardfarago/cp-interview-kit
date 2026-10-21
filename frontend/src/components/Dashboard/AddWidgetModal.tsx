@@ -6,19 +6,35 @@ interface AddWidgetModalProps {
   isLoading?: boolean;
 }
 
+const field = 'w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500';
+
 export default function AddWidgetModal({ onClose, onSubmit, isLoading }: AddWidgetModalProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState('metric');
+  // What the widget measures, saved as config.query
+  const [measure, setMeasure] = useState('count');
+  const [property, setProperty] = useState('');
+  const [eventType, setEventType] = useState('');
+  const [range, setRange] = useState('all');
+  const [groupBy, setGroupBy] = useState('eventType');
+  const usesProperty = measure === 'sum' || measure === 'avg';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    const query = {
+      ...(type !== 'table' && { measure }),
+      ...(type !== 'table' && usesProperty && { property }),
+      ...(type === 'chart' && { groupBy }),
+      ...(eventType && { eventType }),
+      ...(range !== 'all' && { range })
+    };
     const config = type === 'metric'
-      ? { title: name, format: 'number' }
+      ? { title: name, format: 'number', query }
       : type === 'chart'
-      ? { chartType: 'bar', title: name }
+      ? { chartType: groupBy === 'day' ? 'line' : 'bar', title: name, query }
       : type === 'table'
-      ? { sortable: true, pageSize: 10 }
+      ? { sortable: true, pageSize: 10, query }
       : { content: '' };
 
     onSubmit({ name, type, config });
@@ -59,6 +75,39 @@ export default function AddWidgetModal({ onClose, onSubmit, isLoading }: AddWidg
               <option value="text">Text</option>
             </select>
           </div>
+
+          {type !== 'text' && (
+            <div className="mb-6 space-y-3">
+              {type !== 'table' && (
+                <select aria-label="Measure" value={measure} onChange={(e) => setMeasure(e.target.value)} className={field}>
+                  <option value="count">Number of events</option>
+                  <option value="sum">Sum of a property</option>
+                  <option value="avg">Average of a property</option>
+                  <option value="unique_users">Unique users</option>
+                </select>
+              )}
+              {type !== 'table' && usesProperty && (
+                <input aria-label="Property" value={property} onChange={(e) => setProperty(e.target.value)} className={field}
+                  placeholder="Property, e.g. amount" pattern="[A-Za-z0-9_]{1,50}" required />
+              )}
+              {type === 'chart' && (
+                <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value)} className={field}>
+                  <option value="eventType">By event type</option>
+                  <option value="eventName">By event name</option>
+                  <option value="day">Per day</option>
+                </select>
+              )}
+              <input aria-label="Event type" value={eventType} onChange={(e) => setEventType(e.target.value)} className={field}
+                placeholder="Only this event type (optional), e.g. purchase" />
+              <select aria-label="Time range" value={range} onChange={(e) => setRange(e.target.value)} className={field}>
+                <option value="all">All time</option>
+                <option value="hour">Last hour</option>
+                <option value="day">Last 24 hours</option>
+                <option value="week">Last 7 days</option>
+                <option value="month">Last 30 days</option>
+              </select>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2">
             <button

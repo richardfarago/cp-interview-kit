@@ -31,13 +31,17 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    # Debugger on 9229, published to localhost only: anyone who reaches the inspector can run code
+    command: npx ts-node-dev --inspect=0.0.0.0:9229 --respawn --transpile-only src/index.ts
     ports:
       - "3001:3001"
+      - "127.0.0.1:9229:9229"
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://insighthub:insighthub_password@postgres:5432/insighthub
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: super-secret-key-change-in-production
+      # Local development only; the code has no fallback, so real deployments must set their own
+      JWT_SECRET: ${JWT_SECRET:-local-dev-only-secret}
       PORT: 3001
     depends_on:
       postgres:

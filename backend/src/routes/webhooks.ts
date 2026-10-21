@@ -1,5 +1,6 @@
 import { Router, Response, Request } from 'express';
 import { prisma } from '../index';
+import { isNotFound } from '../utils/tenantScope';
 import { AuthRequest, requireOwnerOrAdmin } from '../middleware/auth';
 import { generateToken, verifyWebhookSignature } from '../utils/encryption';
 import { v4 as uuidv4 } from 'uuid';
@@ -124,6 +125,7 @@ router.delete('/:webhookId', requireOwnerOrAdmin, async (req: AuthRequest, res: 
 
     res.json({ message: 'Webhook deleted' });
   } catch (error) {
+    if (isNotFound(error)) return res.status(404).json({ error: 'Webhook not found' });
     console.error('Delete webhook error:', error);
     res.status(500).json({ error: 'Failed to delete webhook' });
   }
@@ -142,6 +144,7 @@ router.post('/:webhookId/regenerate-secret', requireOwnerOrAdmin, async (req: Au
 
     res.json({ secret: newSecret });
   } catch (error) {
+    if (isNotFound(error)) return res.status(404).json({ error: 'Webhook not found' });
     console.error('Regenerate secret error:', error);
     res.status(500).json({ error: 'Failed to regenerate secret' });
   }
