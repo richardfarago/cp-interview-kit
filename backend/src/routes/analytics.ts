@@ -4,6 +4,7 @@ import { AuthRequest, requireOwnerOrAdmin } from '../middleware/auth';
 import { safeGetAnalytics, searchEvents, bulkInsertEvents } from '../utils/db';
 import { cache, cacheKeys } from '../utils/cache';
 import { v4 as uuidv4 } from 'uuid';
+import * as metrics from '../services/metrics';
 
 const router = Router();
 
@@ -53,12 +54,18 @@ router.post('/track/batch', async (req: AuthRequest, res: Response) => {
     if (!Array.isArray(events)) {
       return res.status(400).json({ error: 'events must be an array' });
     }
+    if (events.some((e: any) => e.timestamp && isNaN(new Date(e.timestamp).getTime()))) {
+      return res.status(400).json({ error: 'Invalid timestamp' });
+    }
     await bulkInsertEvents(
       events.map((e: any) => ({
         organizationId: req.user!.organizationId,
         eventType: e.eventType || 'unknown',
         eventName: e.eventName || 'unknown',
-        properties: e.properties || {}
+        properties: e.properties || {},
+        userId: e.userId,
+        sessionId: e.sessionId,
+        timestamp: e.timestamp ? new Date(e.timestamp) : undefined
       }))
     );
 
@@ -139,32 +146,19 @@ router.get('/search', async (req: AuthRequest, res: Response) => {
 // Get aggregated stats
 router.get('/stats', async (req: AuthRequest, res: Response) => {
   try {
-    const { period } = req.query;
+    const period = String(req.query.period ?? 'day');
+    if (!Object.keys(metrics.PERIODS).includes(period)) {
+      return res.status(400).json({ error: `period must be one of: ${Object.keys(metrics.PERIODS).join(', ')}` });
+    }
 
     // Check cache
-    const cacheKey = cacheKeys.orgAnalytics(req.user!.organizationId, period as string || 'day');
+    const cacheKey = cacheKeys.orgAnalytics(req.user!.organizationId, period);
     const cached = cache.get(cacheKey);
     if (cached) {
       return res.json(cached);
     }
 
-    // Get date range based on period
-    const now = new Date();
-    let startDate: Date;
-
-    switch (period) {
-      case 'hour':
-        startDate = new Date(now.getTime() - 60 * 60 * 1000);
-        break;
-      case 'week':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'month':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      default: // day
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    }
+    const startDate = metrics.since(period as keyof typeof metrics.PERIODS)!;
 
     const [totalEvents, eventsByType, recentEvents] = await Promise.all([
       prisma.analyticsEvent.count({
@@ -180,8 +174,7 @@ router.get('/stats', async (req: AuthRequest, res: Response) => {
           timestamp: { gte: startDate }
         },
         _count: true,
-        orderBy: { _count: { eventType: 'desc' } },
-        take: 10
+        orderBy: { _count: { eventType: 'desc' } }
       }),
       prisma.analyticsEvent.findMany({
         where: {
@@ -196,7 +189,7 @@ router.get('/stats', async (req: AuthRequest, res: Response) => {
       totalEvents,
       eventsByType,
       recentEvents,
-      period: period || 'day'
+      period
     };
 
     // Cache for 60 seconds
@@ -321,25 +314,20 @@ router.get('/realtime', async (req: AuthRequest, res: Response) => {
     // Get events from last 5 minutes
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
-    const events = await prisma.analyticsEvent.findMany({
-      where: {
-        organizationId: req.user!.organizationId,
-        timestamp: { gte: fiveMinutesAgo }
-      },
-      orderBy: { timestamp: 'desc' },
-      take: 100
-    });
-
-    const byMinute = events.reduce((acc: any, e) => {
-      const minute = e.timestamp.toISOString().slice(0, 16);
-      acc[minute] = (acc[minute] || 0) + 1;
-      return acc;
-    }, {});
+    const organizationId = req.user!.organizationId;
+    const [minutes, events] = await Promise.all([
+      metrics.runMetric(organizationId, { measure: 'count', groupBy: 'minute' }, fiveMinutesAgo) as Promise<{ label: string; value: number }[]>,
+      prisma.analyticsEvent.findMany({
+        where: { organizationId, timestamp: { gte: fiveMinutesAgo } },
+        orderBy: { timestamp: 'desc' },
+        take: 10 // Last 10 events
+      })
+    ]);
 
     res.json({
-      count: events.length,
-      byMinute,
-      events: events.slice(0, 10) // Last 10 events
+      count: minutes.reduce((total, minute) => total + minute.value, 0),
+      byMinute: Object.fromEntries(minutes.map((minute) => [minute.label, minute.value])),
+      events
     });
   } catch (error) {
     console.error('Realtime analytics error:', error);

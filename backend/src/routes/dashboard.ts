@@ -2,10 +2,12 @@ import { Router, Response } from 'express';
 import { prisma, systemPrisma } from '../index';
 import { isNotFound } from '../utils/tenantScope';
 import { AuthRequest, requireRole } from '../middleware/auth';
-import { validate, createDashboardSchema, createWidgetSchema } from '../middleware/validate';
+import { validate, createDashboardSchema, createWidgetSchema, widgetQuerySchema } from '../middleware/validate';
 import { cache, cacheKeys } from '../utils/cache';
 import { broadcastToOrg } from '../index';
 import { v4 as uuidv4 } from 'uuid';
+import { z } from 'zod';
+import * as metrics from '../services/metrics';
 
 const router = Router();
 
@@ -256,6 +258,10 @@ router.put('/:dashboardId/widgets/:widgetId', async (req: AuthRequest, res: Resp
     if (!dashboard) {
       return res.status(404).json({ error: 'Dashboard not found' });
     }
+    // A widget update can't save a query the engine would later reject
+    const query = widgetQuerySchema.safeParse(config?.query ?? {});
+    if (!query.success) return res.status(400).json({ error: 'Invalid widget query', details: query.error.issues });
+
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (type !== undefined) updateData.type = type;
@@ -313,7 +319,6 @@ router.delete('/:dashboardId/widgets/:widgetId', async (req: AuthRequest, res: R
 router.get('/:dashboardId/widgets/:widgetId/data', async (req: AuthRequest, res: Response) => {
   try {
     const { dashboardId, widgetId } = req.params;
-    const { startDate, endDate } = req.query;
 
     const dashboard = await prisma.dashboard.findFirst({
       where: {
@@ -334,51 +339,11 @@ router.get('/:dashboardId/widgets/:widgetId/data', async (req: AuthRequest, res:
       return res.status(404).json({ error: 'Widget not found' });
     }
 
-    // Fetch data based on widget type and config
-    let data: any = null;
-
-    switch (widget.type) {
-      case 'metric':
-        // Get count/sum of events
-        data = await prisma.analyticsEvent.count({
-          where: {
-            organizationId: req.user!.organizationId,
-            ...(startDate && endDate ? {
-              timestamp: {
-                gte: new Date(startDate as string),
-                lte: new Date(endDate as string)
-              }
-            } : {})
-          }
-        });
-        break;
-
-      case 'chart':
-        data = await prisma.analyticsEvent.groupBy({
-          by: ['eventType'],
-          where: {
-            organizationId: req.user!.organizationId
-          },
-          _count: true
-        });
-        break;
-
-      case 'table':
-        data = await prisma.analyticsEvent.findMany({
-          where: {
-            organizationId: req.user!.organizationId
-          },
-          orderBy: { timestamp: 'desc' },
-          take: 100 // At least limited
-        });
-        break;
-
-      default:
-        data = [];
-    }
+    const data = await metrics.widgetData(req.user!.organizationId, widget);
 
     res.json({ widget, data });
   } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Invalid widget query', details: error.issues });
     console.error('Get widget data error:', error);
     res.status(500).json({ error: 'Failed to get widget data' });
   }
@@ -406,24 +371,7 @@ router.get('/:dashboardId/data', async (req: AuthRequest, res: Response) => {
 
     for (const widget of dashboard.widgets) {
       // Each iteration makes database queries
-      let data: any = null;
-
-      if (widget.type === 'metric') {
-        data = await prisma.analyticsEvent.count({
-          where: { organizationId: req.user!.organizationId }
-        });
-      } else if (widget.type === 'chart') {
-        data = await prisma.analyticsEvent.groupBy({
-          by: ['eventType'],
-          where: { organizationId: req.user!.organizationId },
-          _count: true
-        });
-      } else if (widget.type === 'table') {
-        data = await prisma.analyticsEvent.findMany({
-          where: { organizationId: req.user!.organizationId },
-          take: 50
-        });
-      }
+      const data = await metrics.widgetData(req.user!.organizationId, widget);
 
       widgetData.push({
         widgetId: widget.id,
@@ -436,6 +384,7 @@ router.get('/:dashboardId/data', async (req: AuthRequest, res: Response) => {
       widgetData
     });
   } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Invalid widget query', details: error.issues });
     console.error('Get dashboard data error:', error);
     res.status(500).json({ error: 'Failed to get dashboard data' });
   }

@@ -47,6 +47,9 @@ export async function bulkInsertEvents(
     eventType: string;
     eventName: string;
     properties: any;
+    userId?: string;
+    sessionId?: string;
+    timestamp?: Date;
   }>
 ): Promise<void> {
   // createMany lets Prisma generate the ids; the raw INSERT had none and failed every time

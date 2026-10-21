@@ -38,10 +38,24 @@ export const createDashboardSchema = z.object({
   layout: z.enum(['grid', 'list', 'freeform']).optional()
 });
 
+// What a widget measures, stored as config.query. Each enum maps to a fixed SQL fragment in the
+// metrics service, so only values ever reach the database.
+export const widgetQuerySchema = z
+  .object({
+    measure: z.enum(['count', 'sum', 'avg', 'unique_users']).default('count'),
+    property: z.string().regex(/^[A-Za-z0-9_]{1,50}$/).optional(),
+    eventType: z.string().min(1).max(100).optional(),
+    range: z.enum(['hour', 'day', 'week', 'month', 'all']).optional(),
+    groupBy: z.enum(['eventType', 'eventName', 'day', 'minute']).optional()
+  })
+  .refine((q) => q.property || q.measure === 'count' || q.measure === 'unique_users', {
+    message: 'sum and avg need a property', path: ['property']
+  });
+
 export const createWidgetSchema = z.object({
   name: z.string().min(1).max(100),
   type: z.enum(['chart', 'metric', 'table', 'text']),
-  config: z.object({}).passthrough().optional(),
+  config: z.object({ query: widgetQuerySchema.optional() }).passthrough().optional(),
   position: z.object({
     x: z.number(),
     y: z.number(),

@@ -21,11 +21,15 @@ export function useAnalytics(options: UseAnalyticsOptions = {}) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const currentPeriod = useRef(period);
+  currentPeriod.current = period;
 
   const fetchAnalytics = useCallback(async () => {
     try {
-      setIsLoading(true);
+      // Only the first load shows the loading state, so a refresh doesn't blank the page
       const response = await api.get(`/analytics/stats?period=${period}`);
+      // Ignore a late answer for a period the user has already switched away from
+      if (currentPeriod.current !== period) return;
       setData(response.data);
       setError(null);
     } catch (err: any) {
@@ -46,7 +50,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [autoRefresh, refreshInterval]);
+  }, [fetchAnalytics, autoRefresh, refreshInterval]);
 
   return { data, isLoading, error, refetch: fetchAnalytics };
 }
